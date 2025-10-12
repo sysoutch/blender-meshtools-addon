@@ -19,24 +19,41 @@ def update_material(self, context):
     obj = context.active_object
     if not obj or obj.type != 'MESH':
         return
+
+    # Create default material if none exists
     if not obj.data.materials:
         mat = bpy.data.materials.new(name="Material")
         obj.data.materials.append(mat)
+
     for mat in obj.data.materials:
         if not mat:
             continue
+
         if not mat.use_nodes:
             mat.use_nodes = True
+
         nodes = mat.node_tree.nodes
         links = mat.node_tree.links
+
+        # Get or create Principled BSDF
         principled = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
         if not principled:
             principled = nodes.new('ShaderNodeBsdfPrincipled')
             output = next((n for n in nodes if n.type == 'OUTPUT_MATERIAL'), None)
             if output:
                 links.new(principled.outputs['BSDF'], output.inputs['Surface'])
-        principled.inputs['Metallic'].default_value = 1.0 if bpy.context.scene.material_metallic else 0.0
-        principled.inputs['Roughness'].default_value = bpy.context.scene.material_roughness
+
+        # Ensure links to Metallic are removed
+        metallic_input = principled.inputs.get('Metallic')
+        if metallic_input and metallic_input.is_linked:
+            links.remove(metallic_input.links[0])
+        metallic_input.default_value = 1.0 if context.scene.material_metallic else 0.0
+
+        # Ensure links to Roughness are removed
+        roughness_input = principled.inputs.get('Roughness')
+        if roughness_input and roughness_input.is_linked:
+            links.remove(roughness_input.links[0])
+        roughness_input.default_value = context.scene.material_roughness
 
 # ------------------------------
 # Scene properties registration
@@ -82,20 +99,6 @@ def unregister_scene_props():
     del bpy.types.Scene.use_preserve_boundary
     del bpy.types.Scene.smooth_normals
     del bpy.types.Scene.meshtools_export_fbx_path
-
-# ------------------------------
-# Queue / Logging functions
-# ------------------------------
-def set_status(status, progress=""):
-    _status_queue.put((status, progress))
-    _log_queue.put(f"[STATUS] {status} | {progress}")
-
-def set_model_info(model_info: dict):
-    _model_info_queue.put(model_info)
-    _log_queue.put(f"[MODEL INFO] {model_info}")
-
-def log(message):
-    _log_queue.put(f"[LOG] {message}")
 
 # ------------------------------
 # Model import
@@ -223,21 +226,61 @@ def create_bake_optimized_uvs(obj):
         
     print("  Smart UV Project completed!")
 
+def set_status(status, progress=""):
+    _status_queue.put((status, progress))
+
+def set_model_info(model_info):
+    _model_info_queue.put(model_info)
+
+def log(message):
+    _log_queue.put(message)
+
+def start_queue_timer():
+    def queue_timer():
+        # Process status updates
+        try:
+            status, progress = _status_queue.get_nowait()
+            bpy.context.scene.meshtools_status = status
+            bpy.context.scene.meshtools_progress = progress
+        except queue.Empty:
+            pass
+            
+        # Process model info updates
+        try:
+            model_info = _model_info_queue.get_nowait()
+            bpy.context.scene.meshtools_model_info = model_info
+        except queue.Empty:
+            pass
+            
+        # Process log updates
+        try:
+            message = _log_queue.get_nowait()
+            bpy.context.scene.meshtools_log = bpy.context.scene.meshtools_log + "\n" + message
+        except queue.Empty:
+            pass
+            
+        return 0.1  # Return interval for next check
+    
+    bpy.app.timers.register(queue_timer, first_interval=0.1)
+
 def bake_with_bakelab2():
     while len(bpy.context.scene.BakeLabMaps) > 0:
         bpy.ops.bakelab.removemapitem()
     bpy.context.scene.BakeLabProps.bake_mode = 'TO_ACTIVE'
     bpy.context.scene.BakeLabProps.bake_margin = 2
     bpy.context.scene.BakeLabProps.anti_alias = 2
-    #bpy.ops.bakelab.unwrap(unwrap_mode='ONLY_ACTIVE', smart_uv_margin=0.006, default_uv_name="BakeUVMap", make_single_user_view=True)
     bpy.ops.bakelab.newmapitem(width=2048, height=2048)
     bpy.context.scene.BakeLabMaps[0].samples = 4
 
     bpy.ops.bakelab.newmapitem(type='Normal', width=2048, height=2048)
 
-    #bpy.context.scene.BakeLabMaps[1].enabled = False
     bpy.ops.bakelab.bake()
-    bpy.app.timers.register(applyBakelabMaterials, first_interval=15)
+    
+    def timer_function():
+        applyBakelabMaterials()
+        return None
+    
+    bpy.app.timers.register(timer_function, first_interval=15)
     
 def applyBakelabMaterials():
     bpy.ops.bakelab.generate_mats()
