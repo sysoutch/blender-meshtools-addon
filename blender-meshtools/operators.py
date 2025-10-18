@@ -78,6 +78,16 @@ def register_scene_props():
     bpy.types.Scene.smooth_normals = bpy.props.BoolProperty(name="Smooth Normals", default=True)
     bpy.types.Scene.target_faces = bpy.props.IntProperty(name="Target Faces", default=10000, min=1)
     bpy.types.Scene.meshtools_export_fbx_path = bpy.props.StringProperty(name="Export Path", subtype='FILE_PATH', default="")
+    bpy.types.Scene.meshtools_remesh_tool = bpy.props.EnumProperty(
+        name="Remesh Tool",
+        description="Select the remesh tool to use",
+        items=[
+            ('QUADRI_FLOW', 'QuadriFlow', 'Use QuadriFlow remesh'),
+            ('QUAD_REMESHER', 'Quad Remesher (3rd Party)', 'Use Quad Remesher (3rd Party)'),
+            ('VOXEL', 'Voxel Remesh', 'Use Voxel Remesh'),
+        ],
+        default='QUADRI_FLOW'
+    )
 
 def unregister_scene_props():
     del bpy.types.Scene.meshtools_exp_mesh_tools
@@ -99,6 +109,8 @@ def unregister_scene_props():
     del bpy.types.Scene.use_preserve_boundary
     del bpy.types.Scene.smooth_normals
     del bpy.types.Scene.meshtools_export_fbx_path
+    if hasattr(bpy.types.Scene, 'meshtools_remesh_tool'):
+        del bpy.types.Scene.meshtools_remesh_tool
 
 # ------------------------------
 # Model import
@@ -277,6 +289,7 @@ def bake_with_bakelab2():
     bpy.ops.bakelab.bake()
     
     def timer_function():
+        bpy.app.timers.unregister(timer_function)
         applyBakelabMaterials()
         return None
     
@@ -415,9 +428,68 @@ class MeshToolsBakeOperator(bpy.types.Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
-        duplicate_and_quadriflow_remesh(self, context)
-        self.report({'INFO'}, "Material updated")
+        scene = context.scene
+        obj = context.active_object
+        
+        if not obj or obj.type != 'MESH':
+            self.report({'ERROR'}, "Select a mesh object")
+            return {'CANCELLED'}
+            
+        # Store original object name
+        original_name = obj.name
+        
+        # Duplicate object for remeshing
+        bpy.ops.object.duplicate()
+        duplicate_obj = context.active_object
+        duplicate_obj.name = original_name + "_QuadRemesh"
+        
+        # Apply transforms
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+        
+        # Apply selected remesh tool
+        if scene.meshtools_remesh_tool == 'QUADRI_FLOW':
+            self.apply_quadri_flow_remesh(duplicate_obj, scene)
+        elif scene.meshtools_remesh_tool == 'QUAD_REMESHER':
+            self.apply_quad_remesher(duplicate_obj, scene)
+        elif scene.meshtools_remesh_tool == 'VOXEL':
+            self.apply_voxel_remesh(duplicate_obj, scene)
+        
+        # Create UVs and bake
+        create_bake_optimized_uvs(duplicate_obj)
+        
+        # Set up baking
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)      # Source object
+        duplicate_obj.select_set(True)     # Target object  
+        context.view_layer.objects.active = duplicate_obj  # Make target active
+        
+        # Bake using BakeLab2
+        bake_with_bakelab2()
+        
+        self.report({'INFO'}, f"Applied {scene.meshtools_remesh_tool} remesh and baked")
         return {'FINISHED'}
+    
+    def apply_quadri_flow_remesh(self, obj, scene):
+        """Apply QuadriFlow remesh"""
+        bpy.ops.object.quadriflow_remesh(
+            mode='FACES',
+            target_ratio=1.0,
+            target_faces=scene.target_faces,
+            use_mesh_symmetry=scene.use_mesh_symmetry,
+            use_preserve_sharp=scene.use_preserve_sharp,
+            use_preserve_boundary=scene.use_preserve_boundary,
+            smooth_normals=scene.smooth_normals,
+            seed=0
+        )
+    
+    def apply_quad_remesher(self, obj, scene):
+        """Apply Quad Remesher"""
+        bpy.ops.qremesher.remesh()
+    
+    def apply_voxel_remesh(self, obj, scene):
+        """Apply Voxel remesh"""
+        bpy.context.object.data.remesh_voxel_size = 0.01
+        bpy.ops.object.voxel_remesh()
 
 class MeshToolsExportFBXOperator(bpy.types.Operator):
     bl_idname = "wm.meshtools_export_fbx"
