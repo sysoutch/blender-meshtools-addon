@@ -52,10 +52,6 @@ class MeshToolsPanel(bpy.types.Panel):
             mesh_box.prop(scene, "use_preserve_boundary")
             mesh_box.prop(scene, "smooth_normals")
             mesh_box.prop(scene, "target_faces")
-            
-            # Remesh Tool Selection Dropdown
-            mesh_box.label(text="Remesh Tool:")
-            mesh_box.prop(scene, "meshtools_remesh_tool", text="")
             mesh_box.operator("wm.meshtools_bake", icon='MOD_REMESH')
         else:
             col.prop(scene, "meshtools_exp_mesh_tools", text="Mesh Tools", icon='MODIFIER')
