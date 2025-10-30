@@ -2,6 +2,10 @@
 
 A comprehensive mesh editing add-on for Blender that provides import/export functionality, mesh conversion tools, advanced remeshing with built-in QuadriFlow integration, and automated baking workflows through BakeLab2. Features a user-friendly interface with collapsible sections, real-time status tracking, and detailed logging for efficient 3D workflow optimization.
 
+## Screenshots
+
+![Mesh Tools Interface](https://github.com/sysoutch/blender-meshtools-addon/blob/main/meshtools_screen.png?raw=true)
+
 ## Features
 
 - **Import/Export Tools**: Multiple format support (GLB, OBJ, FBX) with local file import and FBX export functionality
@@ -19,9 +23,8 @@ A comprehensive mesh editing add-on for Blender that provides import/export func
 5. Access the tools in the 3D Viewport under the "MeshTools" tab
 
 ## Requirements
-
-- Blender 4.5.0 or higher
-- BakeLab2 add-on (for baking functionality)
+- [Blender 4.5.0 or higher](https://www.blender.org/download/) 
+- [BakeLab2 add-on](https://github.com/specoolar/Blender-BakeLab2) (for baking functionality) - If you want to run this with --background command line argument use my fork of BakeLab2 until they (hopefully) accept my pull request 🤞 https://github.com/sysoutch/Blender-BakeLab2
 
 ## Workflow Recommendations
 
